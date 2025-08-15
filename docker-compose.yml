@@ -79,7 +79,6 @@ services:
             - DEBUG=${DEBUG:-False}
             - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
             - REDIS_HOST=redis
-            - GMAIL_API_TOKEN=gmail_api_token.json
             - DASH_DB_NAME=${DASH_DB_NAME:-dashboard}
             - DASH_DB_USER=${DASH_DB_USER:-admin}
             - DASH_DB_PASSWORD=${DASH_DB_PASSWORD:-admin}

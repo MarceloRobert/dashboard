@@ -188,7 +188,7 @@ jobs:
                 break
             fi
             echo "Waiting for backend to be ready... $i"
-            sleep 10
+            sleep 5
           done
 
       - name: Run integration tests
@@ -201,6 +201,7 @@ jobs:
   deploy-staging:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: dev-staging
     needs:
       - lint-js
       - build-front
