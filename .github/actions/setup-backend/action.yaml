@@ -1,25 +1,10 @@
 name: Shared setup backend
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
-
-concurrency:
-  group: ci-check-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  CI: true
-
 runs:
   using: "composite"
   steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
