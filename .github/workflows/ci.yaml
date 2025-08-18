@@ -160,7 +160,7 @@ jobs:
                 break
             fi
             echo "Waiting for backend to be ready... $i"
-            sleep 10
+            sleep 5
           done
 
       - name: Run integration tests
