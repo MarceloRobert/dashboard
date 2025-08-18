@@ -109,7 +109,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: ./.github/actions/setup-backend
+      - uses: actions/checkout@v4
+      - name: Setup Backend For Lint
+        uses: ./.github/actions/setup-backend
 
       - name: Lint
         run: poetry run flake8
@@ -128,7 +130,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: ./.github/actions/setup-backend
+      - uses: actions/checkout@v4
+      - name: Setup Backend For Integration Tests
+        uses: ./.github/actions/setup-backend
 
       - name: Configure credentials variables
         run: |

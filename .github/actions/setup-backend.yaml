@@ -1,4 +1,4 @@
-name: "Setup backend"
+name: Shared setup backend
 
 on:
   push:
