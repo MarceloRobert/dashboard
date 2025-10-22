@@ -1,6 +1,6 @@
 from typing import TypedDict
 from datetime import datetime
-from django.db import connection
+from django.db import connection, connections
 
 from kernelCI_app.helpers.database import dict_fetchall
 from kernelCI_app.cache import get_query_cache, set_query_cache
@@ -104,8 +104,63 @@ def _get_hardware_listing_count_clauses() -> str:
     return build_count_clause + boot_count_clause + test_count_clause
 
 
+def _get_listing_from_mv(*, origin, start_date, end_date):
+    params = {
+        "origin": origin,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+
+    # The `SUM`s are needed because the MV groups by 30 minutes intervals
+    query = """
+    SELECT
+        h.platform,
+        h.hardware,
+        SUM(h.pass_builds),
+        SUM(h.fail_builds),
+        SUM(h.null_builds),
+        SUM(h.error_builds),
+        SUM(h.miss_builds),
+        SUM(h.done_builds),
+        SUM(h.skip_builds),
+        SUM(h.pass_boots),
+        SUM(h.fail_boots),
+        SUM(h.null_boots),
+        SUM(h.error_boots),
+        SUM(h.miss_boots),
+        SUM(h.done_boots),
+        SUM(h.skip_boots),
+        SUM(h.pass_tests),
+        SUM(h.fail_tests),
+        SUM(h.null_tests),
+        SUM(h.error_tests),
+        SUM(h.miss_tests),
+        SUM(h.done_tests),
+        SUM(h.skip_tests)
+    FROM
+        hardware_listing_30m h
+    WHERE
+        h.t_interval > %(start_date)s
+        AND h.t_interval < %(end_date)s
+        AND h.origin = %(origin)s
+    GROUP BY
+        h.platform,
+        h.hardware
+    ORDER BY
+        h.platform,
+        h.hardware;
+    """
+
+    with connections["default"].cursor() as cursor:
+        cursor.execute(query, params)
+        return cursor.fetchall()
+
+
 def get_hardware_listing_data(
-    start_date: datetime, end_date: datetime, origin: str
+    start_date: datetime,
+    end_date: datetime,
+    origin: str,
+    use_mv: bool = False,
 ) -> list[dict]:
     """
     Retrieves the listing of platform, compatibles, and
@@ -113,6 +168,12 @@ def get_hardware_listing_data(
     for the latest checkout of every tree.
     The selected checkouts and tests are limited to the start_date/end_date interval.
     """
+
+    if use_mv:
+        results = _get_listing_from_mv(
+            origin=origin, start_date=start_date, end_date=end_date
+        )
+        return results
 
     count_clauses = _get_hardware_listing_count_clauses()
     tree_head_clause = _get_hardware_tree_heads_clause(id_only=True)

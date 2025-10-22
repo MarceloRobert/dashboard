@@ -1,9 +1,9 @@
 from datetime import datetime
 from http import HTTPStatus
 
+from django.http import HttpRequest
 from drf_spectacular.utils import extend_schema
 from pydantic import ValidationError
-from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from kernelCI_app.helpers.errorHandling import (
@@ -63,12 +63,13 @@ class HardwareView(APIView):
         parameters=[HardwareQueryParamsDocumentationOnly],
         responses=HardwareListingResponse,
     )
-    def get(self, request: Request):
+    def get(self, request: HttpRequest):
         try:
             query_params = HardwareQueryParams(
                 start_date=request.GET.get("startTimestampInSeconds"),
                 end_date=request.GET.get("endTimestampInSeconds"),
                 origin=request.GET.get("origin"),
+                use_mv=request.GET.get("use_mv", True),
             )
 
             start_date: datetime = query_params.start_date
@@ -81,6 +82,7 @@ class HardwareView(APIView):
             origin=origin,
             start_date=start_date,
             end_date=end_date,
+            use_mv=query_params.use_mv,
         )
 
         try:
