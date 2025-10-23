@@ -37,11 +37,14 @@ const calculateTimeStamp = (
   endTimestampInSeconds: number;
 } => {
   // Rounding so cache key doesn't get invalidated every request
+  // end means now()
   const endTimestampInSeconds = dateObjectToTimestampInSeconds(
     roundToNearestMinutes(new Date(), {
+      roundingMethod: 'floor',
       nearestTo: 30,
     }),
   );
+  // start means now() - x days
   const startTimestampInSeconds =
     endTimestampInSeconds - daysToSeconds(intervalInDays);
   return { startTimestampInSeconds, endTimestampInSeconds };
@@ -76,6 +79,7 @@ const HardwareListingPage = ({
     startTimestampInSeconds,
     endTimestampInSeconds,
   );
+  console.log('🚀 ~ data:', data);
 
   const listItems: HardwareItem[] = useMemo(() => {
     if (!data || error) {
