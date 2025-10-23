@@ -13,7 +13,7 @@
 START_DAYS_AGO=7
 END_DAYS_AGO=0
 INTERVAL_HOURS=8
-ORIGINS="maestro" # comma-separated list of origins. If empty will select all origins
+ORIGINS="" # comma-separated list of origins. If empty will select all origins
 
 START_HOURS_AGO=$((START_DAYS_AGO * 24))
 END_HOURS_AGO=$((END_DAYS_AGO * 24))

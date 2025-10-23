@@ -39,6 +39,7 @@ def _get_hardware_tree_heads_clause(*, id_only: bool) -> str:
                 WHERE
                     C.start_time >= %(start_date)s
                     AND C.start_time <= %(end_date)s
+                    AND C.start_time >= NOW() - INTERVAL '30 days'
                 ORDER BY
                     C.tree_name ASC,
                     C.git_repository_branch ASC,
@@ -104,6 +105,108 @@ def _get_hardware_listing_count_clauses() -> str:
     return build_count_clause + boot_count_clause + test_count_clause
 
 
+def define_materialized_view():
+    query = """
+    CREATE MATERIALIZED VIEW hardware_listing_30m AS
+    WITH
+        tree_heads AS (
+            SELECT DISTINCT
+                ON (
+                    C.tree_name,
+                    C.git_repository_branch,
+                    C.git_repository_url,
+                    C.origin
+                )
+                C.id
+            FROM
+                checkouts C
+            WHERE
+                C.start_time >= NOW() - INTERVAL '30 days'
+            ORDER BY
+                C.tree_name ASC,
+                C.git_repository_branch ASC,
+                C.git_repository_url ASC,
+                C.origin ASC,
+                C.start_time DESC
+        ),
+        relevant_tests AS (
+            SELECT
+                t.start_time,
+                t.origin,
+                t.environment_compatible AS hardware,
+                t."environment_misc" ->> 'platform' AS platform,
+                t.status,
+                t.path,
+                t.id,
+                b.id AS build_id,
+                b.status AS build_status
+            FROM tests t
+            INNER JOIN builds b ON t.build_id = b.id
+            INNER JOIN tree_heads TH ON b.checkout_id = TH.id
+            WHERE
+                t."environment_misc" ->> 'platform' IS NOT NULL
+                AND t.start_time >= (NOW() - INTERVAL '30 days')
+        )
+    -- Aggregation into daily buckets
+    SELECT
+        date_trunc('day', start_time) AS t_interval,
+        origin,
+        platform,
+        hardware,
+        COUNT(DISTINCT CASE WHEN "build_status" = 'PASS' AND build_id
+            NOT LIKE 'maestro:dummy_%' THEN build_id END) AS pass_builds,
+        COUNT(DISTINCT CASE WHEN "build_status" = 'FAIL' AND build_id
+            NOT LIKE 'maestro:dummy_%' THEN build_id END) AS fail_builds,
+        COUNT(DISTINCT CASE WHEN "build_status" IS NULL AND build_id IS
+            NOT NULL AND build_id NOT LIKE 'maestro:dummy_%' THEN build_id END)
+            AS null_builds,
+        COUNT(DISTINCT CASE WHEN "build_status" = 'ERROR' AND build_id
+            NOT LIKE 'maestro:dummy_%' THEN build_id END) AS error_builds,
+        COUNT(DISTINCT CASE WHEN "build_status" = 'MISS' AND build_id
+            NOT LIKE 'maestro:dummy_%' THEN build_id END) AS miss_builds,
+        COUNT(DISTINCT CASE WHEN "build_status" = 'DONE' AND build_id
+            NOT LIKE 'maestro:dummy_%' THEN build_id END) AS done_builds,
+        COUNT(DISTINCT CASE WHEN "build_status" = 'SKIP' AND build_id
+            NOT LIKE 'maestro:dummy_%' THEN build_id END) AS skip_builds,
+
+        COUNT(CASE WHEN ("path" = 'boot' OR "path" LIKE 'boot.%')
+                        AND "status" = 'PASS' THEN 1 END) AS pass_boots,
+        COUNT(CASE WHEN ("path" = 'boot' OR "path" LIKE 'boot.%')
+                        AND "status" = 'FAIL' THEN 1 END) AS fail_boots,
+        SUM(CASE WHEN ("path" = 'boot' OR "path" LIKE 'boot.%')
+                        AND "status" IS NULL AND id IS NOT NULL THEN 1 ELSE 0 END) AS null_boots,
+        COUNT(CASE WHEN ("path" = 'boot' OR "path" LIKE 'boot.%')
+                        AND "status" = 'ERROR' THEN 1 END) AS error_boots,
+        COUNT(CASE WHEN ("path" = 'boot' OR "path" LIKE 'boot.%')
+                        AND "status" = 'MISS' THEN 1 END) AS miss_boots,
+        COUNT(CASE WHEN ("path" = 'boot' OR "path" LIKE 'boot.%')
+                        AND "status" = 'DONE' THEN 1 END) AS done_boots,
+        COUNT(CASE WHEN ("path" = 'boot' OR "path" LIKE 'boot.%')
+                        AND "status" = 'SKIP' THEN 1 END) AS skip_boots,
+
+        COUNT(CASE WHEN ("path" <> 'boot' AND "path" NOT LIKE 'boot.%')
+                        AND "status" = 'PASS' THEN 1 END) AS pass_tests,
+        COUNT(CASE WHEN ("path" <> 'boot' AND "path" NOT LIKE 'boot.%')
+                        AND "status" = 'FAIL' THEN 1 END) AS fail_tests,
+        SUM(CASE WHEN ("path" <> 'boot' AND "path" NOT LIKE 'boot.%')
+                        AND "status" IS NULL AND id IS NOT NULL THEN 1 ELSE 0 END) AS null_tests,
+        COUNT(CASE WHEN ("path" <> 'boot' AND "path" NOT LIKE 'boot.%')
+                        AND "status" = 'ERROR' THEN 1 END) AS error_tests,
+        COUNT(CASE WHEN ("path" <> 'boot' AND "path" NOT LIKE 'boot.%')
+                        AND "status" = 'MISS' THEN 1 END) AS miss_tests,
+        COUNT(CASE WHEN ("path" <> 'boot' AND "path" NOT LIKE 'boot.%')
+                        AND "status" = 'DONE' THEN 1 END) AS done_tests,
+        COUNT(CASE WHEN ("path" <> 'boot' AND "path" NOT LIKE 'boot.%')
+                        AND "status" = 'SKIP' THEN 1 END) AS skip_tests
+    FROM relevant_tests
+    GROUP BY t_interval, origin, platform, hardware;
+
+    CREATE UNIQUE INDEX hardware_listing_30m_unique_idx
+    ON hardware_listing_30m (t_interval, origin, platform, hardware);
+    """
+    return query
+
+
 def _get_listing_from_mv(*, origin, start_date, end_date):
     params = {
         "origin": origin,
@@ -140,8 +243,8 @@ def _get_listing_from_mv(*, origin, start_date, end_date):
     FROM
         hardware_listing_30m h
     WHERE
-        h.t_interval > %(start_date)s
-        AND h.t_interval < %(end_date)s
+        h.t_interval >= %(start_date)s
+        AND h.t_interval <= %(end_date)s
         AND h.origin = %(origin)s
     GROUP BY
         h.platform,
