@@ -228,3 +228,40 @@ class Incidents(models.Model):
             models.Index(fields=["issue_version"], name="incidents_issue_version"),
             models.Index(fields=["origin"], name="incidents_origin"),
         ]
+
+
+class HardwareListing(models.Model):
+    """Defines the hardware_listing materialized view"""
+
+    t_interval = models.DateTimeField()  # defines the time bucket that the row is in
+    origin = models.TextField()
+    platform = models.TextField(
+        blank=True, null=True
+    )  # "platform" is environment_misc->>'platform'
+    hardware = ArrayField(
+        models.TextField(), blank=True, null=True
+    )  # "hardware" is environment_compatible
+    pass_builds = models.IntegerField()
+    fail_builds = models.IntegerField()
+    null_builds = models.IntegerField()
+    error_builds = models.IntegerField()
+    miss_builds = models.IntegerField()
+    done_builds = models.IntegerField()
+    pass_boots = models.IntegerField()
+    fail_boots = models.IntegerField()
+    null_boots = models.IntegerField()
+    error_boots = models.IntegerField()
+    miss_boots = models.IntegerField()
+    done_boots = models.IntegerField()
+    pass_tests = models.IntegerField()
+    fail_tests = models.IntegerField()
+    null_tests = models.IntegerField()
+    error_tests = models.IntegerField()
+    miss_tests = models.IntegerField()
+    done_tests = models.IntegerField()
+
+    class Meta:
+        # Django does not define materialized views as models.
+        # Since this is not a real table, we can set its fields and mark managed as False.
+        managed = False
+        db_table = "hardware_listing"

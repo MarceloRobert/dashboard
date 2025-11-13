@@ -69,6 +69,7 @@ class HardwareView(APIView):
                 start_date=request.GET.get("startTimestampInSeconds"),
                 end_date=request.GET.get("endTimestampInSeconds"),
                 origin=request.GET.get("origin"),
+                use_mv=request.GET.get("use_mv", False),
             )
 
             start_date: datetime = query_params.start_date
@@ -81,6 +82,7 @@ class HardwareView(APIView):
             origin=origin,
             start_date=start_date,
             end_date=end_date,
+            use_mv=query_params.use_mv,
         )
 
         try:
