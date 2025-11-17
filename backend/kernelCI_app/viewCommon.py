@@ -16,6 +16,7 @@ def create_details_build_summary(builds: list[BuildHistoryItem]) -> BaseBuildSum
     config_summ: dict[str, StatusCount] = {}
     arch_summ: dict[str, BuildArchitectures] = {}
     origin_summ: dict[str, StatusCount] = {}
+    labs_summ: dict[str, StatusCount] = {}
 
     for build in builds:
         status_key = build.status
@@ -37,9 +38,14 @@ def create_details_build_summary(builds: list[BuildHistoryItem]) -> BaseBuildSum
             status = origin_summ.setdefault(origin, StatusCount())
             _increment_status(status, status_key)
 
+        if lab := build.misc.get("lab"):
+            status = labs_summ.setdefault(lab, StatusCount())
+            _increment_status(status, status_key)
+
     return BaseBuildSummary(
         status=status_summ,
         configs=config_summ,
         architectures=arch_summ,
         origins=origin_summ,
+        labs=labs_summ,
     )

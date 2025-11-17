@@ -28,6 +28,7 @@ from kernelCI_app.typeModels.commonDetails import (
     BuildSummary,
     DetailsFilters,
     GlobalFilters,
+    LocalFiltersWithLabs,
     LocalFilters,
     Summary,
     TestSummary,
@@ -109,6 +110,10 @@ class BaseTreeDetailsSummary(APIView):
             "build": set(),
             "boot": set(),
             "test": set(),
+        }
+
+        self.unfiltered_labs: dict[PossibleTabs, set[str]] = {
+            "build": set(),
         }
 
         # TODO: move to a BuildSummary model and combine with the other fields above
@@ -254,10 +259,7 @@ class BaseTreeDetailsSummary(APIView):
                 ),
                 summary=Summary(
                     builds=BuildSummary(
-                        status=self.base_build_summary.status,
-                        origins=self.base_build_summary.origins,
-                        architectures=self.base_build_summary.architectures,
-                        configs=self.base_build_summary.configs,
+                        **self.base_build_summary.model_dump(),
                         issues=self.build_issues,
                         unknown_issues=self.failed_builds_with_unknown_issues,
                     ),
@@ -292,12 +294,13 @@ class BaseTreeDetailsSummary(APIView):
                         architectures=list(self.global_architectures),
                         compilers=list(self.global_compilers),
                     ),
-                    builds=LocalFilters(
+                    builds=LocalFiltersWithLabs(
                         issues=list(self.unfiltered_build_issues),
                         has_unknown_issue=self.unfiltered_uncategorized_issue_flags[
                             "build"
                         ],
                         origins=sorted(self.unfiltered_origins["build"]),
+                        labs=sorted(self.unfiltered_labs["build"]),
                     ),
                     boots=LocalFilters(
                         issues=list(self.unfiltered_boot_issues),
