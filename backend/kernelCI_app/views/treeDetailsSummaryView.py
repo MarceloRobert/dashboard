@@ -300,7 +300,7 @@ class BaseTreeDetailsSummary(APIView):
                             "build"
                         ],
                         origins=sorted(self.unfiltered_origins["build"]),
-                        labs=sorted(self.unfiltered_labs["build"]),
+                        labs=self.unfiltered_labs["build"],
                     ),
                     boots=LocalFilters(
                         issues=list(self.unfiltered_boot_issues),
