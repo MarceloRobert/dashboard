@@ -240,6 +240,7 @@ def generate_test_summary_typed() -> TestSummary:
         unknown_issues=0,
         fail_reasons={},
         failed_platforms=set(),
+        labs={},
     )
 
 
