@@ -308,6 +308,7 @@ def decide_if_is_boot_filtered_out(instance, row_data):
     test_path = row_data["test_path"]
     incident_test_id = row_data["incident_test_id"]
     origin = row_data["test_origin"]
+    lab = row_data["history_item"].get("lab", UNKNOWN_STRING)
 
     return instance.filters.is_boot_filtered_out(
         duration=test_duration,
@@ -317,6 +318,7 @@ def decide_if_is_boot_filtered_out(instance, row_data):
         status=test_status,
         incident_test_id=incident_test_id,
         origin=origin,
+        lab=lab,
     )
 
 
@@ -339,6 +341,7 @@ def decide_if_is_test_filtered_out(instance, row_data):
     test_path = row_data["test_path"]
     incident_test_id = row_data["incident_test_id"]
     origin = row_data["test_origin"]
+    lab = row_data["history_item"].get("lab", UNKNOWN_STRING)
 
     return instance.filters.is_test_filtered_out(
         duration=test_duration,
@@ -348,6 +351,7 @@ def decide_if_is_test_filtered_out(instance, row_data):
         status=test_status,
         incident_test_id=incident_test_id,
         origin=origin,
+        lab=lab,
     )
 
 
