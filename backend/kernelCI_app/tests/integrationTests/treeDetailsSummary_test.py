@@ -150,6 +150,7 @@ def request_data(base_tree: dict, filters: dict | None = None) -> tuple[Response
 )
 def test_no_filters(base_tree, status_code, has_error_body):
     response, content = request_data(base_tree)
+    print("🚀 ~ response, content:", response, content)
     assert_status_code(response=response, status_code=status_code)
     if has_error_body:
         assert_error_response(response_content=content)

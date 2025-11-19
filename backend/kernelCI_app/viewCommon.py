@@ -1,3 +1,4 @@
+from kernelCI_app.constants.general import UNKNOWN_STRING
 from kernelCI_app.typeModels.common import StatusCount
 from kernelCI_app.typeModels.commonDetails import (
     BaseBuildSummary,
@@ -38,7 +39,7 @@ def create_details_build_summary(builds: list[BuildHistoryItem]) -> BaseBuildSum
             status = origin_summ.setdefault(origin, StatusCount())
             _increment_status(status, status_key)
 
-        if lab := build.misc.get("lab"):
+        if lab := build.misc.get("lab", UNKNOWN_STRING):
             status = labs_summ.setdefault(lab, StatusCount())
             _increment_status(status, status_key)
 
