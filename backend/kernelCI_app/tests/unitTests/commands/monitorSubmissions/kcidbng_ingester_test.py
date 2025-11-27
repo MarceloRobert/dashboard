@@ -206,36 +206,113 @@ class TestPrepareFileData:
         mock_file_open.assert_called_once()
 
 
+class TestGenerateInsertQuery:
+    def test_generate_model_insert_query_success(self):
+        """Test _generate_model_insert_query."""
+        from kernelCI_app.management.commands.helpers.kcidbng_ingester import (
+            _generate_model_insert_query,
+        )
+
+        mock_model = MagicMock()
+
+        mock_field_timestamp = MagicMock()
+        mock_field_timestamp.name = "field_timestamp"
+        mock_field_timestamp.db_column = "_timestamp"
+        mock_field_timestamp.generated = False
+        mock_field_timestamp.get_internal_type.return_value = "DateTimeField"
+
+        mock_field_comment = MagicMock()
+        mock_field_comment.name = "comment"
+        mock_field_comment.db_column = None
+        mock_field_comment.generated = False
+        mock_field_comment.get_internal_type.return_value = "CharField"
+
+        mock_field3 = MagicMock()
+        mock_field3.name = "checkout"
+        mock_field3.db_column = None
+        mock_field3.generated = False
+        mock_field3.get_internal_type.return_value = "ForeignKey"
+
+        mock_field4 = MagicMock()
+        mock_field4.name = "series"
+        mock_field4.generated = True
+
+        mock_model._meta.fields = [
+            mock_field_timestamp,
+            mock_field_comment,
+            mock_field3,
+            mock_field4,
+        ]
+
+        with patch(
+            "kernelCI_app.management.commands.helpers.kcidbng_ingester.MODEL_MAP",
+            {"issues": mock_model},
+        ):
+            updateable_fields, query = _generate_model_insert_query(
+                "issues", mock_model
+            )
+
+        assert updateable_fields == ["field_timestamp", "comment", "checkout_id"]
+        assert "INSERT INTO issues" in query
+        assert "_timestamp, comment, checkout_id" in query
+        assert "GREATEST(issues._timestamp, EXCLUDED._timestamp)" in query
+        assert "COALESCE(issues.comment, EXCLUDED.comment)" in query
+        assert "COALESCE(issues.checkout_id, EXCLUDED.checkout_id)" in query
+        assert "series" not in query
+
+
 class TestConsumeBuffer:
     """Test cases for consume_buffer function."""
 
     # Test cases:
     # - buffer with items
     # - empty buffer
+    # - trying to insert in an invalid table
 
     @patch(
         "kernelCI_app.management.commands.helpers.kcidbng_ingester.INGEST_BATCH_SIZE",
         INGEST_BATCH_SIZE_MOCK,
     )
     @patch("kernelCI_app.management.commands.helpers.kcidbng_ingester.out")
+    @patch(
+        "kernelCI_app.management.commands.helpers.kcidbng_ingester._generate_model_insert_query"
+    )
+    @patch("kernelCI_app.management.commands.helpers.kcidbng_ingester.connections")
     @patch("time.time", side_effect=TIME_MOCK)
-    def test_consume_buffer_with_items(self, mock_time, mock_out):
+    def test_consume_buffer_with_items(
+        self, mock_time, mock_connections, mock_generate_query, mock_out
+    ):
         """Test consume_buffer with items in buffer."""
+        table_name = "issues"
         mock_model = MagicMock()
         mock_buffer = [MagicMock(), MagicMock()]
+        mock_generate_query.return_value = (
+            ["_timestamp", "other_field"],
+            """
+                INSERT INTO issues (
+                    _timestamp, other_field
+                )
+                VALUES (
+                    %s, %s
+                )
+                ON CONFLICT (id)
+                DO UPDATE SET
+                    GREATEST(issues._timestamp, EXCLUDED._timestamp),
+                    COALESCE(issues.other_field, EXCLUDED.other_field);""",
+        )
+        mock_cursor = MagicMock()
+        mock_connections["default"].cursor.return_value.__enter__.return_value = (
+            mock_cursor
+        )
 
         with patch(
             "kernelCI_app.management.commands.helpers.kcidbng_ingester.MODEL_MAP",
             {"issues": mock_model},
         ):
-            consume_buffer(mock_buffer, "issues")
+            consume_buffer(mock_buffer, table_name)
 
         assert mock_time.call_count == 2
-        mock_model.objects.bulk_create.assert_called_once_with(
-            mock_buffer,
-            batch_size=INGEST_BATCH_SIZE_MOCK,
-            ignore_conflicts=True,
-        )
+        mock_cursor.executemany.assert_called_once()
         mock_out.assert_called_once()
 
     @patch("kernelCI_app.management.commands.helpers.kcidbng_ingester.out")
@@ -253,6 +330,12 @@ class TestConsumeBuffer:
         mock_model.objects.bulk_create.assert_not_called()
         mock_time.assert_not_called()
         mock_out.assert_not_called()
+
+    def test_consume_buffer_wrong_table(self):
+        """Test consume_buffer with invalid table name raises KeyError."""
+        with pytest.raises(KeyError):
+            mock_model = MagicMock()
+            consume_buffer([mock_model], "another")
 
 
 class TestFlushBuffers:
@@ -401,7 +484,7 @@ class TestFlushBuffers:
         assert mock_time.call_count == 2
         mock_atomic.assert_called_once()
         mock_logger.error.assert_called_once_with(
-            "Error during bulk_create flush: %s", mock_consume.side_effect
+            "Error during buffer flush: %s", mock_consume.side_effect
         )
 
 

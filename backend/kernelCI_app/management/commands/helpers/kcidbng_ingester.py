@@ -21,7 +21,7 @@ from kernelCI_app.management.commands.helpers.log_excerpt_utils import (
     extract_log_excerpt,
 )
 import kcidb_io
-from django.db import transaction
+from django.db import connections, transaction
 from kernelCI_app.models import Issues, Checkouts, Builds, Tests, Incidents
 
 from kernelCI_app.management.commands.helpers.process_submissions import (
@@ -111,7 +111,59 @@ def prepare_file_data(
         }
 
 
-def consume_buffer(buffer: list[TableModels], item_type: TableNames) -> None:
+def _generate_model_insert_query(
+    table_name: TableNames, model: TableModels
+) -> tuple[list[str], str]:
+    """
+    Dynamically generates the insert query for any model.
+    This function should only be used inside a transaction context.
+
+    Gives priority to the existing data in the database.
+
+    Returns a list of which model properties can be updated and the insert query.
+    """
+    updateable_model_fields: list[str] = []
+    updateable_db_fields: list[str] = []
+    query_params_properties: list[tuple[str, str]] = []
+
+    for field in model._meta.fields:
+        if field.generated:
+            continue
+
+        field_name = (
+            field.name + "_id"
+            if field.get_internal_type() == "ForeignKey"
+            else field.name
+        )
+        real_name = field.db_column or field_name
+        operation = "GREATEST" if real_name == "_timestamp" else "COALESCE"
+
+        query_params_properties.append((real_name, operation))
+        updateable_model_fields.append(field_name)
+        updateable_db_fields.append(real_name)
+
+    conflict_clauses = []
+    for field, op in query_params_properties:
+        conflict_clauses.append(
+            f"""
+            {field} = {op}({table_name}.{field}, EXCLUDED.{field})"""
+        )
+
+    query = f"""
+        INSERT INTO {table_name} (
+            {', '.join(updateable_db_fields)}
+        )
+        VALUES (
+            {', '.join(['%s'] * len(updateable_db_fields))}
+        )
+        ON CONFLICT (id)
+        DO UPDATE SET {', '.join(conflict_clauses)};
+    """
+
+    return updateable_model_fields, query
+
+
+def consume_buffer(buffer: list[TableModels], table_name: TableNames) -> None:
     """
     Consume a buffer of items and insert them into the database.
     This function is called by the db_worker thread.
@@ -119,15 +171,33 @@ def consume_buffer(buffer: list[TableModels], item_type: TableNames) -> None:
     if not buffer:
         return
 
-    model = MODEL_MAP[item_type]
+    try:
+        model = MODEL_MAP[table_name]
+    except KeyError:
+        out(
+            "Unknown table '%s' passed to consume_buffer. Valid tables: %s"
+            % (table_name, str(", ".join(MODEL_MAP.keys())))
+        )
+        raise
+
+    updateable_model_fields, query = _generate_model_insert_query(table_name, model)
+
+    params = []
+    for obj in buffer:
+        obj_values = []
+        for field in updateable_model_fields:
+            value = getattr(obj, field)
+            model_field = obj._meta.get_field(field)
+            if model_field.get_internal_type() == "JSONField" and value is not None:
+                value = json.dumps(value)
+            obj_values.append(value)
+        params.append(tuple(obj_values))
 
     t0 = time.time()
-    model.objects.bulk_create(
-        buffer,
-        batch_size=INGEST_BATCH_SIZE,
-        ignore_conflicts=True,
-    )
-    out("bulk_create %s: n=%d in %.3fs" % (item_type, len(buffer), time.time() - t0))
+    with connections["default"].cursor() as cursor:
+        cursor.executemany(query, params)
+
+    out("bulk_create %s: n=%d in %.3fs" % (table_name, len(buffer), time.time() - t0))
 
 
 def flush_buffers(
@@ -163,7 +233,7 @@ def flush_buffers(
             consume_buffer(tests_buf, "tests")
             consume_buffer(incidents_buf, "incidents")
     except Exception as e:
-        logger.error("Error during bulk_create flush: %s", e)
+        logger.error("Error during buffer flush: %s", e)
     finally:
         flush_dur = time.time() - flush_start
         rate = total / flush_dur if flush_dur > 0 else 0.0
