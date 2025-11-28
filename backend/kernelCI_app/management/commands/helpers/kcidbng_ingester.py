@@ -16,6 +16,7 @@ import time
 import traceback
 from typing import Any, Optional, TypedDict
 from kernelCI_app.helpers.logger import out
+from kernelCI_app.management.commands.generated.insert_queries import INSERT_QUERIES
 from kernelCI_app.management.commands.helpers.file_utils import move_file_to_failed_dir
 from kernelCI_app.management.commands.helpers.log_excerpt_utils import (
     extract_log_excerpt,
@@ -28,7 +29,7 @@ from kernelCI_app.management.commands.helpers.process_submissions import (
     TableNames,
     build_instances_from_submission,
 )
-from kernelCI_app.typeModels.modelTypes import MODEL_MAP, TableModels
+from kernelCI_app.typeModels.modelTypes import TableModels
 
 
 class SubmissionMetadata(TypedDict):
@@ -111,58 +112,6 @@ def prepare_file_data(
         }
 
 
-def _generate_model_insert_query(
-    table_name: TableNames, model: TableModels
-) -> tuple[list[str], str]:
-    """
-    Dynamically generates the insert query for any model.
-    This function should only be used inside a transaction context.
-
-    Gives priority to the existing data in the database.
-
-    Returns a list of which model properties can be updated and the insert query.
-    """
-    updateable_model_fields: list[str] = []
-    updateable_db_fields: list[str] = []
-    query_params_properties: list[tuple[str, str]] = []
-
-    for field in model._meta.fields:
-        if field.generated:
-            continue
-
-        field_name = (
-            field.name + "_id"
-            if field.get_internal_type() == "ForeignKey"
-            else field.name
-        )
-        real_name = field.db_column or field_name
-        operation = "GREATEST" if real_name == "_timestamp" else "COALESCE"
-
-        query_params_properties.append((real_name, operation))
-        updateable_model_fields.append(field_name)
-        updateable_db_fields.append(real_name)
-
-    conflict_clauses = []
-    for field, op in query_params_properties:
-        conflict_clauses.append(
-            f"""
-            {field} = {op}({table_name}.{field}, EXCLUDED.{field})"""
-        )
-
-    query = f"""
-        INSERT INTO {table_name} (
-            {', '.join(updateable_db_fields)}
-        )
-        VALUES (
-            {', '.join(['%s'] * len(updateable_db_fields))}
-        )
-        ON CONFLICT (id)
-        DO UPDATE SET {', '.join(conflict_clauses)};
-    """
-
-    return updateable_model_fields, query
-
-
 def consume_buffer(buffer: list[TableModels], table_name: TableNames) -> None:
     """
     Consume a buffer of items and insert them into the database.
@@ -171,16 +120,9 @@ def consume_buffer(buffer: list[TableModels], table_name: TableNames) -> None:
     if not buffer:
         return
 
-    try:
-        model = MODEL_MAP[table_name]
-    except KeyError:
-        out(
-            "Unknown table '%s' passed to consume_buffer. Valid tables: %s"
-            % (table_name, str(", ".join(MODEL_MAP.keys())))
-        )
-        raise
-
-    updateable_model_fields, query = _generate_model_insert_query(table_name, model)
+    insert_props = INSERT_QUERIES[table_name]
+    updateable_model_fields = insert_props["updateable_model_fields"]
+    query = insert_props["query"]
 
     params = []
     for obj in buffer:
