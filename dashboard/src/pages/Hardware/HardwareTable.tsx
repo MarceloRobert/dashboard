@@ -125,7 +125,7 @@ const getColumns = (
 
         return (
           <div className="flex max-w-xl flex-wrap gap-2">
-            {hardwares.map(hardware => {
+            {hardwares.sort().map(hardware => {
               return (
                 <Badge
                   key={hardware}

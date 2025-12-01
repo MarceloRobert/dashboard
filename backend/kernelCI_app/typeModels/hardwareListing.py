@@ -46,3 +46,4 @@ class HardwareQueryParams(BaseModel):
     ]
     start_date: datetime
     end_date: datetime
+    use_mv: Optional[bool]  # flag to use materialized view or not

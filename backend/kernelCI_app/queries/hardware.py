@@ -1,6 +1,6 @@
 from typing import TypedDict
 from datetime import datetime
-from django.db import connection
+from django.db import connection, connections
 
 from kernelCI_app.helpers.database import dict_fetchall
 from kernelCI_app.cache import get_query_cache, set_query_cache
@@ -39,6 +39,7 @@ def _get_hardware_tree_heads_clause(*, id_only: bool) -> str:
                 WHERE
                     C.start_time >= %(start_date)s
                     AND C.start_time <= %(end_date)s
+                    AND C.start_time >= NOW() - INTERVAL '30 days'
                 ORDER BY
                     C.tree_name ASC,
                     C.git_repository_branch ASC,
@@ -104,8 +105,170 @@ def _get_hardware_listing_count_clauses() -> str:
     return build_count_clause + boot_count_clause + test_count_clause
 
 
+# TODO: move this to a migration
+# For now it is just defined as a function until we settle on a correct query
+# and so that we don't run into the chance of having temporary migrations in production
+def define_materialized_view():
+    query = """
+    CREATE MATERIALIZED VIEW hardware_listing AS
+        WITH
+            tree_heads AS (
+                SELECT DISTINCT
+                    ON (
+                        C.tree_name,
+                        C.git_repository_branch,
+                        C.git_repository_url,
+                        C.origin
+                    )
+                    C.id
+                FROM
+                    checkouts C
+                WHERE
+                    C.start_time >= NOW() - INTERVAL '30 days'
+                ORDER BY
+                    C.tree_name ASC,
+                    C.git_repository_branch ASC,
+                    C.git_repository_url ASC,
+                    C.origin ASC,
+                    C.start_time DESC
+            ),
+            relevant_tests AS (
+                SELECT
+                    t.start_time,
+                    t.origin,
+                    t.environment_compatible AS hardware,
+                    t."environment_misc" ->> 'platform' AS platform,
+                    t.status,
+                    t.path,
+                    t.id,
+                    b.id AS build_id,
+                    b.status AS build_status
+                FROM tests t
+                INNER JOIN builds b ON t.build_id = b.id
+                INNER JOIN tree_heads TH ON b.checkout_id = TH.id
+                WHERE
+                    t."environment_misc" ->> 'platform' IS NOT NULL
+                    AND t.start_time >= (NOW() - INTERVAL '30 days')
+            )
+        -- Aggregation into daily buckets
+        SELECT
+            date_trunc('day', start_time) AS t_interval,
+            origin,
+            platform,
+            hardware,
+            -- Cast countings to integer so that they don't become bigint automatically (4 bytes vs 8 bytes)
+            COUNT(DISTINCT CASE WHEN "build_status" = 'PASS' AND build_id
+                NOT LIKE 'maestro:dummy_%' THEN build_id END)::integer AS pass_builds,
+            COUNT(DISTINCT CASE WHEN "build_status" = 'FAIL' AND build_id
+                NOT LIKE 'maestro:dummy_%' THEN build_id END)::integer AS fail_builds,
+            COUNT(DISTINCT CASE WHEN "build_status" IS NULL AND build_id IS
+                NOT NULL AND build_id NOT LIKE 'maestro:dummy_%' THEN build_id END)::integer
+                AS null_builds,
+            COUNT(DISTINCT CASE WHEN "build_status" = 'ERROR' AND build_id
+                NOT LIKE 'maestro:dummy_%' THEN build_id END)::integer AS error_builds,
+            COUNT(DISTINCT CASE WHEN "build_status" = 'MISS' AND build_id
+                NOT LIKE 'maestro:dummy_%' THEN build_id END)::integer AS miss_builds,
+            COUNT(DISTINCT CASE WHEN "build_status" = 'DONE' AND build_id
+                NOT LIKE 'maestro:dummy_%' THEN build_id END)::integer AS done_builds,
+            COUNT(DISTINCT CASE WHEN "build_status" = 'SKIP' AND build_id
+                NOT LIKE 'maestro:dummy_%' THEN build_id END)::integer AS skip_builds,
+
+            COUNT(CASE WHEN ("path" = 'boot' OR "path" LIKE 'boot.%')
+                            AND "status" = 'PASS' THEN 1 END)::integer AS pass_boots,
+            COUNT(CASE WHEN ("path" = 'boot' OR "path" LIKE 'boot.%')
+                            AND "status" = 'FAIL' THEN 1 END)::integer AS fail_boots,
+            SUM(CASE WHEN ("path" = 'boot' OR "path" LIKE 'boot.%')
+                            AND "status" IS NULL AND id IS NOT NULL THEN 1 ELSE 0 END)::integer AS null_boots,
+            COUNT(CASE WHEN ("path" = 'boot' OR "path" LIKE 'boot.%')
+                            AND "status" = 'ERROR' THEN 1 END)::integer AS error_boots,
+            COUNT(CASE WHEN ("path" = 'boot' OR "path" LIKE 'boot.%')
+                            AND "status" = 'MISS' THEN 1 END)::integer AS miss_boots,
+            COUNT(CASE WHEN ("path" = 'boot' OR "path" LIKE 'boot.%')
+                            AND "status" = 'DONE' THEN 1 END)::integer AS done_boots,
+            COUNT(CASE WHEN ("path" = 'boot' OR "path" LIKE 'boot.%')
+                            AND "status" = 'SKIP' THEN 1 END)::integer AS skip_boots,
+
+            COUNT(CASE WHEN ("path" <> 'boot' AND "path" NOT LIKE 'boot.%')
+                            AND "status" = 'PASS' THEN 1 END)::integer AS pass_tests,
+            COUNT(CASE WHEN ("path" <> 'boot' AND "path" NOT LIKE 'boot.%')
+                            AND "status" = 'FAIL' THEN 1 END)::integer AS fail_tests,
+            SUM(CASE WHEN ("path" <> 'boot' AND "path" NOT LIKE 'boot.%')
+                            AND "status" IS NULL AND id IS NOT NULL THEN 1 ELSE 0 END)::integer AS null_tests,
+            COUNT(CASE WHEN ("path" <> 'boot' AND "path" NOT LIKE 'boot.%')
+                            AND "status" = 'ERROR' THEN 1 END)::integer AS error_tests,
+            COUNT(CASE WHEN ("path" <> 'boot' AND "path" NOT LIKE 'boot.%')
+                            AND "status" = 'MISS' THEN 1 END)::integer AS miss_tests,
+            COUNT(CASE WHEN ("path" <> 'boot' AND "path" NOT LIKE 'boot.%')
+                            AND "status" = 'DONE' THEN 1 END)::integer AS done_tests,
+            COUNT(CASE WHEN ("path" <> 'boot' AND "path" NOT LIKE 'boot.%')
+                            AND "status" = 'SKIP' THEN 1 END)::integer AS skip_tests
+        FROM relevant_tests
+        GROUP BY t_interval, origin, platform, hardware
+    WITH NO DATA;
+
+    CREATE UNIQUE INDEX hardware_listing_unique_idx
+    ON hardware_listing (t_interval, origin, platform, hardware);
+    """
+    return query
+
+
+def _get_listing_from_mv(*, origin, start_date, end_date):
+    params = {
+        "origin": origin,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+
+    # The `SUM`s are needed because the MV aggregates in smaller intervals than requested (usually)
+    query = """
+    SELECT
+        h.platform,
+        h.hardware,
+        SUM(h.pass_builds),
+        SUM(h.fail_builds),
+        SUM(h.null_builds),
+        SUM(h.error_builds),
+        SUM(h.miss_builds),
+        SUM(h.done_builds),
+        SUM(h.skip_builds),
+        SUM(h.pass_boots),
+        SUM(h.fail_boots),
+        SUM(h.null_boots),
+        SUM(h.error_boots),
+        SUM(h.miss_boots),
+        SUM(h.done_boots),
+        SUM(h.skip_boots),
+        SUM(h.pass_tests),
+        SUM(h.fail_tests),
+        SUM(h.null_tests),
+        SUM(h.error_tests),
+        SUM(h.miss_tests),
+        SUM(h.done_tests),
+        SUM(h.skip_tests)
+    FROM
+        hardware_listing h
+    WHERE
+        h.t_interval >= %(start_date)s
+        AND h.t_interval <= %(end_date)s
+        AND h.origin = %(origin)s
+    GROUP BY
+        h.platform,
+        h.hardware
+    ORDER BY
+        h.platform,
+        h.hardware;
+    """
+
+    with connections["default"].cursor() as cursor:
+        cursor.execute(query, params)
+        return cursor.fetchall()
+
+
 def get_hardware_listing_data(
-    start_date: datetime, end_date: datetime, origin: str
+    start_date: datetime,
+    end_date: datetime,
+    origin: str,
+    use_mv: bool = False,
 ) -> list[dict]:
     """
     Retrieves the listing of platform, compatibles, and
@@ -113,6 +276,12 @@ def get_hardware_listing_data(
     for the latest checkout of every tree.
     The selected checkouts and tests are limited to the start_date/end_date interval.
     """
+
+    if use_mv:
+        results = _get_listing_from_mv(
+            origin=origin, start_date=start_date, end_date=end_date
+        )
+        return results
 
     count_clauses = _get_hardware_listing_count_clauses()
     tree_head_clause = _get_hardware_tree_heads_clause(id_only=True)

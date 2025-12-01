@@ -37,8 +37,10 @@ const calculateTimeStamp = (
   endTimestampInSeconds: number;
 } => {
   // Rounding so cache key doesn't get invalidated every request
+  // Always rounds down, meaning "the closest 30min in the past"
   const endTimestampInSeconds = dateObjectToTimestampInSeconds(
     roundToNearestMinutes(new Date(), {
+      roundingMethod: 'floor',
       nearestTo: 30,
     }),
   );
