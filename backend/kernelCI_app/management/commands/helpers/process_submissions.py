@@ -115,6 +115,12 @@ def make_checkout_instance(checkout: dict[str, Any]) -> Checkouts:
 
 
 def make_build_instance(build: dict[str, Any]) -> Builds:
+    # Updates the lab field with the value from misc similar to a generated column,
+    # but doing it this way we can avoid updating the entire db to add the generated column
+    existing_lab = build.get("lab")
+    if existing_lab is None:
+        lab = build.get("misc", {}).get("lab")
+        build["lab"] = lab
     filtered_build = {key: value for key, value in build.items() if key in BUILD_FIELDS}
     obj = Builds(**filtered_build)
     obj.field_timestamp = timezone.now()
@@ -122,6 +128,12 @@ def make_build_instance(build: dict[str, Any]) -> Builds:
 
 
 def make_test_instance(test: dict[str, Any]) -> Tests:
+    # Updates the lab field with the value from misc similar to a generated column,
+    # but doing it this way we can avoid updating the entire db to add the generated column
+    existing_lab = test.get("lab")
+    if existing_lab is None:
+        lab = test.get("misc", {}).get("lab")
+        test["lab"] = lab
     flattened_test = flatten_dict_specific(test, ["environment", "number"])
     filtered_test = {
         key: value for key, value in flattened_test.items() if key in TEST_FIELDS
