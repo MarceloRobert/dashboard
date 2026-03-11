@@ -1,0 +1,71 @@
+
+
+KernelCI Metrics Summary
+========================
+
+
+  COVERAGE
+  --------
+                      This week    Last week    Change
+                      ─────────    ─────────    ──────
+  Trees monitored     39           29           +10
+  Checkouts           3,345        2,398        +947  (+39%)
+  Builds              8,707        9,312        -605  (-6%)
+  Tests               688,691      1,131,899    -443,208  (-39%)
+
+
+  BUILD REGRESSIONS
+  -----------------
+  A "regression" is defined as a reported problem affecting 0 or multiple builds.
+
+  Origin      Total         Affected           Affected builds by top issue
+              Regressions   Builds (total)     #1      #2      #3
+  ─────────────────────────────────────────────────────────────────────────
+  maestro     16 (+16)      288                100     40      30
+  microsoft   2 (+2)        4                  4       -       -
+  redhat      6 (+6)        14                 10      4       -
+  ─────────────────────────────────────────────────────────────────────────
+  Total       24 (+24)      306
+
+
+  TOP REGRESSIONS PER ORIGIN
+  --------------------------
+  maestro:
+  #1 (100 occurrences) - https://d.kernelci.org/issue/maestro%3Aaea3c5ea8370ccff4a12c7a3bc4dcb8d33017bce?iv=1
+  #2 (40 occurrences) - https://d.kernelci.org/issue/maestro%3A0ff8d66ac6fd6edd9f59254dd2a4e2b625bdb243?iv=1
+  #3 (30 occurrences) - https://d.kernelci.org/issue/maestro%3Aeb64d23de5c656c276dd481b919ecd01fb217ac4?iv=1
+  ---
+  microsoft:
+  #1 (2 occurrences) - https://d.kernelci.org/issue/microsoft%3Abb65e4cc190c12d00dfd9e706f7a1f5897f6753d?iv=1
+  ---
+  redhat:
+  #1 (10 occurrences) - https://d.kernelci.org/issue/redhat%3Aissue_1413?iv=1749116102
+  #2 (4 occurrences) - https://d.kernelci.org/issue/redhat%3Aissue_2355?iv=1699523391
+
+
+  TEST LABS ACTIVITY
+  ------------
+  9 labs reported results this week (1 more than last week).
+
+  Labs marked with an asterisk (*) are new.
+  Labs that stopped reporting are shown with a -100% change.
+
+  Lab                      Covered builds  Boots    Tests          Change (tests)
+  ────────────────────────────────────────────────────────────────────────────────
+  lava-broonie             1246            1,116    297,163        -71,584  (-19%)
+  lava-cip                 200             908      179            +24  (+15%)
+  lava-collabora           456             4,626    275,641        -351,010  (-56%)
+  lava-foundriesio         10              52       0              0  (0%)
+  lava-kci-qualcomm        980             88       57,807         +21,302  (+58%)
+  lava-kontron             20              78       0              0  (0%)
+  lava-pengutronix         58              332      0              0  (0%)
+  opentest-ti              189             1,310    0              0  (0%)
+  pull-labs-demo *         456             0        916            +916
+  ────────────────────────────────────────────────────────────────────────────────
+  Total                    3615            8,510    631,706        -400,352  (-39%)
+
+--
+This is an experimental report format. Please send feedback in!
+Talk to us at kernelci@lists.linux.dev
+
+Made with love by the KernelCI team - https://kernelci.org

@@ -696,7 +696,7 @@ def get_metrics_data(
     """
 
     build_incidents_query = """
-    WITH ranked AS (
+    WITH time_rank AS (
         SELECT
             _timestamp,
             origin,
@@ -704,22 +704,55 @@ def get_metrics_data(
             ROW_NUMBER() OVER (PARTITION BY issue_id ORDER BY _timestamp) AS rn
         FROM incidents
             where build_id is not null
+    ),
+    numbers AS (
+        SELECT
+            origin,
+            COUNT(*) FILTER (
+                WHERE _timestamp BETWEEN
+                    NOW() - INTERVAL '7 days'
+                    AND NOW() - INTERVAL '0 days'
+            ) AS total_incidents,
+            COUNT(*) FILTER (
+                WHERE rn = 1
+                AND _timestamp BETWEEN
+                    NOW() - INTERVAL '7 days'
+                    AND NOW() - INTERVAL '0 days'
+            ) AS first_incidents_in_interval
+        FROM time_rank
+        GROUP BY origin
+    ),
+    grouped_counted AS (
+        SELECT
+            origin,
+            issue_id,
+            issue_version,
+            COUNT(*) AS total
+        FROM incidents
+            where build_id is not null
+            AND _timestamp BETWEEN
+                    NOW() - INTERVAL '7 days'
+                    AND NOW() - INTERVAL '0 days'
+        GROUP BY origin, issue_id, issue_version
+        ORDER BY origin, total DESC
+    ),
+    ranked_counted AS (
+        SELECT
+            *,
+            ROW_NUMBER() OVER (PARTITION BY origin ORDER BY total DESC) as ranked
+        FROM grouped_counted
     )
     SELECT
-        origin,
-        COUNT(*) FILTER (
-            WHERE _timestamp BETWEEN
-                NOW() - INTERVAL %(start_days_ago)s
-                AND NOW() - INTERVAL %(end_days_ago)s
-        ) AS total_incidents,
-        COUNT(*) FILTER (
-            WHERE rn = 1
-            AND _timestamp BETWEEN
-                NOW() - INTERVAL %(start_days_ago)s
-                AND NOW() - INTERVAL %(end_days_ago)s
-        ) AS first_incidents_in_interval
-    FROM ranked
-    GROUP BY origin;
+        n.origin,
+        n.total_incidents,
+        n.first_incidents_in_interval,
+        r.issue_id,
+        r.issue_version,
+        r.total
+    FROM numbers n
+    JOIN ranked_counted r
+    ON n.origin = r.origin
+    WHERE r.ranked <= 3
     """
 
     # For the lab query, we can't simply join the builds of the tests by lab,
