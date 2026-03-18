@@ -77,6 +77,7 @@ cp .env.example .env
 #    DJANGO_SECRET_KEY → a strong random string
 #    ALLOWED_HOSTS → e.g. ["backend", "your-domain.com"]
 #    CORS_ALLOWED_ORIGINS → e.g. ["https://your-domain.com"]
+#    RUN_APP_MIGRATIONS_ON_STARTUP → true (if you want backend startup to apply app migrations)
 
 # 3. Start services
 docker compose -f docker-compose-next.yml up -d
@@ -88,6 +89,8 @@ curl http://localhost/api/
 docker compose -f docker-compose-next.yml run --rm backend \
   sh -c "chmod +x ./migrate-app-db.sh && ./migrate-app-db.sh"
 ```
+
+By default, backend startup skips app migrations. To run them automatically on startup only in production, set `RUN_APP_MIGRATIONS_ON_STARTUP=true` in the production `.env` file and keep it `false` elsewhere.
 
 ### With ingester and aggregation processor
 
