@@ -49,7 +49,16 @@ export const LogOrJsonSheetContent = ({
   status,
   error,
 }: ILogSheet): JSX.Element => {
-  const logExcerpt = logData?.log_excerpt;
+  const logExcerptString = logData?.log_excerpt;
+  const logExcerptFile = logData?.logExcerptFileLink;
+
+  const logExcerpt =
+    logExcerptString !== undefined &&
+    logExcerptString !== null &&
+    logExcerptString !== '' // <-- this is what is causing problems
+      ? logExcerptString
+      : logExcerptFile;
+
   const { data: logExcerptData, status: logExcerptStatus } =
     useLogExcerpt(logExcerpt);
 

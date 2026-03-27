@@ -20,6 +20,7 @@ export interface LogData {
   architecture?: string;
   log_url?: string;
   log_excerpt?: string;
+  logExcerptFileLink?: string;
 }
 
 export type LogType = 'build' | 'test';
@@ -55,6 +56,18 @@ export const processLogData = (
         ? data.misc.platform
         : undefined;
 
+  let logExcerptFileLink: string | undefined = undefined;
+  if (data?.output_files) {
+    // output_files is actually an array of objects, not just a single object
+    for (const files of data.output_files as any) {
+      const fileName = files['name'];
+      if (fileName === 'log_excerpt') {
+        logExcerptFileLink = files['url'];
+        break;
+      }
+    }
+  }
+
   return {
     id,
     type: data.type,
@@ -68,6 +81,7 @@ export const processLogData = (
     log_excerpt: data?.log_excerpt,
     status: handledStatus,
     hardware: handledHardware,
+    logExcerptFileLink: logExcerptFileLink,
   };
 };
 
