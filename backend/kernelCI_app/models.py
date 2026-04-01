@@ -130,6 +130,7 @@ class Builds(models.Model):
         output_field=models.TextField(blank=True, null=True),
         db_persist=True,
     )
+    lab = models.TextField(blank=True, null=True)
 
     class Meta:
         db_table = "builds"
@@ -142,6 +143,7 @@ class Builds(models.Model):
             models.Index(fields=["start_time"], name="builds_start_time"),
             models.Index(fields=["series"], name="builds_series_idx"),
             models.Index(fields=["status"], name="builds_status"),
+            models.Index(fields=["lab"], name="builds_lab"),
         ]
 
 
@@ -179,6 +181,7 @@ class Tests(models.Model):
     )
     number_unit = models.TextField(blank=True, null=True)
     input_files = models.JSONField(blank=True, null=True)
+    lab = models.TextField(blank=True, null=True)
 
     class Meta:
         db_table = "tests"
@@ -209,6 +212,7 @@ class Tests(models.Model):
                 condition=Q(environment_misc__platform__isnull=False),
                 name="tests_origin_time_platform",
             ),
+            models.Index(fields=["lab"], name="tests_lab"),
         ]
 
 
